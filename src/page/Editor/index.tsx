@@ -18,10 +18,6 @@ import { RollbackOutlined } from "@ant-design/icons";
 import { DesignerExports } from "@chamn/engine/dist/plugins/Designer";
 
 const { DisplaySourceSchema, DEFAULT_PLUGIN_LIST } = plugins;
-const win = window as any;
-win.React = React;
-win.ReactDOM = ReactDOM;
-win.ReactDOMClient = ReactDOMClient;
 
 const beforeInitRender: LayoutPropsType["beforeInitRender"] = async ({ iframe }) => {
   const subWin = iframe.getWindow();
