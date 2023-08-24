@@ -15,7 +15,7 @@ import {
 } from "@chamn/engine";
 import { AssetPackage } from "@chamn/model";
 import { RollbackOutlined } from "@ant-design/icons";
-import { DesignerExports } from "@chamn/engine/dist/plugins/Designer";
+import { DesignerPluginInstance } from "@chamn/engine/dist/plugins/Designer/type";
 
 const { DisplaySourceSchema, DEFAULT_PLUGIN_LIST } = plugins;
 
@@ -119,12 +119,12 @@ export const App = () => {
     setReady(true);
   }, []);
   const onReady = useCallback(async (ctx: EnginContext) => {
-    const designer = await ctx.pluginManager.onPluginReadyOk("Designer");
+    const designer = await ctx.pluginManager.get<DesignerPluginInstance>("Designer");
     const reloadPage = async () => {
       setTimeout(() => {
-        const designerExports = designer?.exports as DesignerExports;
+        const designerExport = designer?.export;
         console.log("to reload");
-        designerExports.reload({
+        designerExport?.reload({
           assets
         });
       }, 0);
