@@ -1,107 +1,46 @@
-import { BasePage, BasePageBClient, EmptyPage, Material } from "@chamn/demo-page";
-import { Button, message, Modal } from "antd";
-import React, { useCallback, useEffect, useState } from "react";
+import { BasePage, LayoutPage } from "@chamn/demo-page";
+import { Button, Dropdown, message, Modal, Select } from "antd";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import ReactDOMClient from "react-dom/client";
-import "@chamn/engine/dist/style.css";
+import "../../index.css";
+import { ArrowUpOutlined, RollbackOutlined } from "@ant-design/icons";
+
+import commonMeta from "@chamn/material/dist/meta";
+
+import commonComponentUrl from "@chamn/material/dist/index.umd.js?url";
+import commonComponentCSS from "@chamn/material/dist/style.css?url";
 import {
-  Engine,
+  DEFAULT_PLUGIN_LIST,
+  DesignerSizer,
+  DisplaySourceSchema,
   EnginContext,
-  InnerComponentMeta,
-  collectVariable,
-  flatObject,
-  LayoutPropsType,
-  plugins
+  Engine,
+  InnerComponentMeta
 } from "@chamn/engine";
-import { AssetPackage } from "@chamn/model";
-import { RollbackOutlined } from "@ant-design/icons";
+import "@chamn/engine/dist/style.css";
 import { DesignerPluginInstance } from "@chamn/engine/dist/plugins/Designer/type";
 
-const { DisplaySourceSchema, DEFAULT_PLUGIN_LIST } = plugins;
+const win = window as any;
+win.React = React;
+win.ReactDOM = ReactDOM;
+win.ReactDOMClient = ReactDOMClient;
 
-const beforeInitRender: LayoutPropsType["beforeInitRender"] = async ({ iframe }) => {
-  const subWin = iframe.getWindow();
-  if (!subWin) {
-    return;
-  }
-  (subWin as any).React = React;
-  (subWin as any).ReactDOM = ReactDOM;
-  (subWin as any).ReactDOMClient = ReactDOMClient;
+const demoPageMap = {
+  LayoutPage,
+  BasePage
 };
-
-const customRender: LayoutPropsType["customRender"] = async ({
-  iframe: iframeContainer,
-  assets,
-  page,
-  pageModel,
-  ready
-}) => {
-  await iframeContainer.injectJS("./render.umd.js");
-  const iframeWindow = iframeContainer.getWindow()!;
-  const iframeDoc = iframeContainer.getDocument()!;
-  const IframeReact = iframeWindow.React!;
-  const IframeReactDOM = iframeWindow.ReactDOMClient!;
-  const CRender = iframeWindow.CRender!;
-
-  // 注入组件物料资源
-  const assetLoader = new CRender.AssetLoader(assets, {
-    window: iframeContainer.getWindow()!
-  });
-  assetLoader
-    .onSuccess(() => {
-      // 从子窗口获取物料对象
-      const componentCollection = collectVariable(assets, iframeWindow);
-      const components = flatObject(componentCollection);
-
-      const App = IframeReact?.createElement(CRender.DesignRender, {
-        adapter: CRender?.ReactAdapter,
-        page: page,
-        pageModel: pageModel,
-        components,
-        onMount: (designRenderInstance) => {
-          ready(designRenderInstance);
-        }
-      });
-
-      IframeReactDOM.createRoot(iframeDoc.getElementById("app")!).render(App);
-    })
-    .onError(() => {
-      console.log("资源加载出粗");
-    })
-    .load();
-};
-
-const assets: AssetPackage[] = [
-  {
-    package: "antd",
-    globalName: "antd",
-    resources: [
-      {
-        src: "https://cdn.bootcdn.net/ajax/libs/antd/5.1.2/reset.css"
-      },
-      {
-        src: "https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.7/dayjs.min.js"
-      },
-      {
-        src: "https://cdn.bootcdn.net/ajax/libs/antd/5.1.2/antd.js"
-      }
-    ]
-  }
-];
 
 const assetPackagesList = [
   {
-    package: "@chamn/mock-material",
-    globalName: "antd",
+    package: commonMeta.package,
+    globalName: commonMeta.globalName,
     resources: [
       {
-        src: "https://cdn.bootcdn.net/ajax/libs/antd/5.1.2/reset.css"
+        src: commonComponentUrl
       },
       {
-        src: "https://cdn.bootcdn.net/ajax/libs/dayjs/1.11.7/dayjs.min.js"
-      },
-      {
-        src: "https://cdn.bootcdn.net/ajax/libs/antd/5.1.2/antd.js"
+        src: commonComponentCSS
       }
     ]
   }
@@ -110,8 +49,16 @@ const assetPackagesList = [
 export const App = () => {
   const [ready, setReady] = useState(false);
   const [page, setPage] = useState(BasePage);
+  const [lang, setLang] = useState(() => {
+    const lang = localStorage.getItem("lang") || "zh_CN";
+    return lang;
+  });
+
+  const engineRef = useRef<EnginContext>();
 
   useEffect(() => {
+    // check 本地版本号，如果不一致直接覆盖本地所有的
+    const localBuildVersion = localStorage.getItem("build_version");
     const localPage = localStorage.getItem("pageSchema");
     if (localPage) {
       setPage(JSON.parse(localPage));
@@ -119,20 +66,35 @@ export const App = () => {
     setReady(true);
   }, []);
   const onReady = useCallback(async (ctx: EnginContext) => {
+    engineRef.current = ctx;
+    engineRef.current?.engine.getI18n()?.changeLanguage(lang);
+
     const designer = await ctx.pluginManager.get<DesignerPluginInstance>("Designer");
+
     const reloadPage = async () => {
       setTimeout(() => {
         const designerExport = designer?.export;
         console.log("to reload");
-        designerExport?.reload({
-          assets
-        });
+        designerExport?.reload();
       }, 0);
     };
 
-    reloadPage();
-
     const workbench = ctx.engine.getWorkbench();
+
+    // 添加自定义 view, 给组件使用，调用  disposeView 可以移除整个 view
+    const disposeView = workbench?.addCustomView({
+      key: "testView",
+      view: (
+        <div
+          style={{
+            display: "none"
+          }}
+          onClick={() => console.log("click")}
+        >
+          123123
+        </div>
+      )
+    });
 
     workbench?.replaceTopBarView(
       <div
@@ -145,6 +107,61 @@ export const App = () => {
           paddingRight: "10px"
         }}
       >
+        <div className="logo">Chameleon EG</div>
+
+        <Select
+          defaultValue={"BasePage"}
+          style={{ width: 200, marginRight: "10px" }}
+          onChange={(val) => {
+            const newPage = (demoPageMap as any)[val];
+            if (newPage) {
+              setPage(newPage);
+              ctx.engine.pageModel.reloadPage(newPage);
+            }
+          }}
+          options={[
+            {
+              value: "BasePage",
+              label: "Base Page"
+            },
+            {
+              value: "LayoutPage",
+              label: "Advance Layout Page"
+            }
+          ]}
+        />
+        <div
+          style={{
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: "10px"
+          }}
+        >
+          {ctx && <DesignerSizer ctx={ctx} />}
+        </div>
+        <Select
+          defaultValue={lang}
+          style={{ width: 100, marginRight: "10px" }}
+          onChange={(val) => {
+            setLang(val);
+            engineRef.current?.engine.getI18n()?.changeLanguage(val);
+          }}
+          options={[
+            {
+              value: "zh_CN",
+              label: "Chinese"
+            },
+            {
+              value: "en_US",
+              label: "English"
+            }
+          ]}
+        />
+        <a target="_blank" href="https://hlerenow.github.io/chameleon/documents/" rel="noreferrer">
+          <Button style={{ marginRight: "10px" }}>Documents </Button>
+        </a>
         <a target="_blank" href="https://github.com/hlerenow/chameleon" rel="noreferrer">
           <Button style={{ marginRight: "10px" }}>Github </Button>
         </a>
@@ -152,8 +169,8 @@ export const App = () => {
         <Button
           style={{ marginRight: "10px" }}
           onClick={async () => {
-            const res = await ctx.pluginManager.get("History");
-            res?.exports.preStep();
+            const res = await ctx.pluginManager.get<any>("History");
+            res?.export.preStep();
           }}
         >
           <RollbackOutlined />
@@ -161,8 +178,8 @@ export const App = () => {
         <Button
           style={{ marginRight: "10px" }}
           onClick={async () => {
-            const res = await ctx.pluginManager.get("History");
-            res?.exports.nextStep();
+            const res = await ctx.pluginManager.get<any>("History");
+            res?.export.nextStep();
           }}
         >
           <RollbackOutlined
@@ -184,61 +201,95 @@ export const App = () => {
         >
           Refresh Page
         </Button>
-        <Button
-          style={{ marginRight: "10px" }}
-          onClick={() => {
-            let src = "/#/preview";
-            if (location.href.includes("hlerenow")) {
-              src = "/chameleon/#/preview";
-            }
 
-            Modal.info({
-              closable: true,
-              icon: null,
-              width: "calc(100vw - 100px)",
-              centered: true,
-              title: (
-                <div>
-                  Preview
-                  <Button
-                    size="small"
-                    style={{
-                      float: "right",
-                      marginRight: "30px"
-                    }}
-                    onClick={() => {
-                      window.open(src);
-                    }}
-                  >
-                    Open in new window
-                  </Button>
-                </div>
-              ),
-              content: (
-                <div
+        <Dropdown.Button
+          style={{ marginRight: "10px", width: "110px" }}
+          menu={{
+            items: []
+          }}
+          buttonsRender={() => {
+            return [
+              <Button
+                onClick={() => {
+                  let src = "/#/preview";
+                  if (location.href.includes("hlerenow")) {
+                    src = "/chameleon/#/preview";
+                  }
+
+                  Modal.info({
+                    closable: true,
+                    icon: null,
+                    width: "calc(100vw - 100px)",
+                    centered: true,
+                    title: (
+                      <div>
+                        Preview
+                        <Button
+                          size="small"
+                          style={{
+                            float: "right",
+                            marginRight: "30px"
+                          }}
+                          onClick={() => {
+                            window.open(src);
+                          }}
+                        >
+                          Open in new window
+                        </Button>
+                      </div>
+                    ),
+                    content: (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "calc(100vh - 200px)"
+                        }}
+                      >
+                        <iframe
+                          style={{
+                            border: "1px solid #e7e7e7",
+                            width: "100%",
+                            height: "100%",
+                            borderRadius: "4px",
+                            overflow: "hidden"
+                          }}
+                          src={src}
+                        />
+                      </div>
+                    ),
+                    footer: <></>
+                  });
+                }}
+                key={1}
+              >
+                Preview
+              </Button>,
+              <Button
+                key={2}
+                style={{
+                  padding: "0 8px"
+                }}
+                onClick={() => {
+                  let src = "/#/preview";
+                  if (location.href.includes("hlerenow")) {
+                    src = "/chameleon/#/preview";
+                  }
+                  window.open(src);
+                }}
+              >
+                <ArrowUpOutlined
                   style={{
-                    width: "100%",
-                    height: "calc(100vh - 200px)"
+                    fontSize: "12px",
+                    transform: "rotate(30deg)"
                   }}
-                >
-                  <iframe
-                    style={{
-                      border: "1px solid #e7e7e7",
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: "4px",
-                      overflow: "hidden"
-                    }}
-                    src={src}
-                  />
-                </div>
-              ),
-              footer: null
-            });
+                />
+              </Button>
+            ];
           }}
         >
           Preview
-        </Button>
+        </Dropdown.Button>
+
         <Button
           type="primary"
           onClick={() => {
@@ -256,21 +307,66 @@ export const App = () => {
   if (!ready) {
     return <>loading...</>;
   }
+
   return (
     <Engine
       plugins={DEFAULT_PLUGIN_LIST}
-      schema={page as any}
-      material={[...InnerComponentMeta, ...Material]}
-      assets={[]}
+      schema={page}
+      onMount={(ctx) => {
+        setTimeout(async () => {
+          const res = await ctx.engine.updateMaterials(
+            [],
+            [
+              {
+                package: "lodash",
+                globalName: "lodash",
+                resources: [
+                  {
+                    src: "https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"
+                  }
+                ]
+              },
+              {
+                package: "dayjs",
+                globalName: "dayjs",
+                resources: [
+                  {
+                    src: "https://cdn.jsdelivr.net/npm/dayjs@1.11.12/dayjs.min.js"
+                  }
+                ]
+              }
+            ]
+          );
+          console.log("add material successfully");
+        }, 2 * 1000);
+      }}
+      // 传入组件物料
+      material={[...InnerComponentMeta, ...commonMeta.meta]}
+      // 组件物料对应的 js 运行库，只能使用 umd 模式的 js
       assetPackagesList={assetPackagesList}
-      onReady={onReady}
       beforePluginRun={({ pluginManager }) => {
+        pluginManager.customPlugin("RightPanel", (pluginInstance) => {
+          pluginInstance.ctx.config.customPropertySetterMap = {
+            TestSetter: (props: any) => {
+              useEffect(() => {
+                console.log(props);
+                const currentNode = props.setterContext.pluginCtx.engine.getActiveNode();
+                currentNode.value.configure.isContainer = false;
+                currentNode.value.children = [];
+                currentNode.updateValue();
+              }, []);
+              return <div>123</div>;
+            }
+          };
+
+          return pluginInstance;
+        });
+
         pluginManager.customPlugin("Designer", (pluginInstance) => {
-          pluginInstance.ctx.config.beforeInitRender = beforeInitRender;
-          pluginInstance.ctx.config.customRender = customRender;
           return pluginInstance;
         });
       }}
+      onReady={onReady}
     />
   );
 };
